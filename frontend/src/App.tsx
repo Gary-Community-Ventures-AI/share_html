@@ -2,13 +2,14 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { request } from './api'
 import type { GetToken } from './api'
+import DocumentActions from './DocumentActions'
 import GroupsPage from './GroupsPage'
 import { ShareDialog } from './DocumentViewer'
 
 type EntityId = string | number
 type View = 'documents' | 'groups' | 'agent-access'
 type User = { email?: string; name?: string }
-type Document = { id: EntityId; title: string; relationship: 'mine' | 'shared'; can_share?: boolean; created_at?: string; updated_at?: string }
+type Document = { id: EntityId; title: string; relationship: 'mine' | 'shared'; can_manage?: boolean; can_share?: boolean; created_at?: string; updated_at?: string }
 type ApiKey = { id: EntityId; name?: string; prefix?: string; created_at?: string }
 type OpenedDocuments = Record<string, string>
 
@@ -49,7 +50,7 @@ function Icon({ name }: { name: 'plus' | 'arrow' | 'key' | 'trash' | 'copy' | 'r
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
-function DocumentCollection({ documents, loading, profileImageUrl, userName, openedDocuments, onOpen, onShare, search, onSearchChange }: { documents: Document[]; loading: boolean; profileImageUrl?: string; userName: string; openedDocuments: OpenedDocuments; onOpen: (document: Document) => void; onShare: (document: Document) => void; search: string; onSearchChange: (value: string) => void }) {
+function DocumentCollection({ documents, loading, profileImageUrl, userName, openedDocuments, getToken, onOpen, onShare, onRename, onDelete, search, onSearchChange }: { documents: Document[]; loading: boolean; profileImageUrl?: string; userName: string; openedDocuments: OpenedDocuments; getToken?: GetToken; onOpen: (document: Document) => void; onShare: (document: Document) => void; onRename: (document: Document, title: string) => void; onDelete: (document: Document) => void; search: string; onSearchChange: (value: string) => void }) {
   return (
     <section className="document-collection">
       <div className="collection-heading">
@@ -70,6 +71,7 @@ function DocumentCollection({ documents, loading, profileImageUrl, userName, ope
             <span className="open-button">Open <Icon name="arrow" /></span>
           </a>
           {document.can_share && <button className="share-card-button" type="button" onClick={() => onShare(document)} aria-label={`Share ${document.title}`}><Icon name="share" /> Share</button>}
+          {document.can_manage && <DocumentActions document={document} getToken={getToken} onRenamed={(title) => onRename(document, title)} onDeleted={() => onDelete(document)} />}
           </div>
           )
         })}
@@ -206,7 +208,7 @@ export default function App({ getToken, view = 'documents', profileImageUrl, acc
       {view === 'documents' && (
         <div className="dashboard-grid documents-only"><div className="documents-stage">
           <div className="collections-grid">
-          <DocumentCollection documents={visibleDocuments} loading={loading} profileImageUrl={profileImageUrl} userName={user?.name || user?.email || 'Developer'} openedDocuments={openedDocuments} onOpen={recordDocumentOpen} onShare={(document) => setShareDocumentId(String(document.id))} search={search} onSearchChange={setSearch} />
+          <DocumentCollection documents={visibleDocuments} loading={loading} profileImageUrl={profileImageUrl} userName={user?.name || user?.email || 'Developer'} openedDocuments={openedDocuments} getToken={getToken} onOpen={recordDocumentOpen} onShare={(document) => setShareDocumentId(String(document.id))} onRename={(document, title) => { setDocuments((current) => current.map((item) => item.id === document.id ? { ...item, title, updated_at: new Date().toISOString() } : item)); setNotice('Document renamed.') }} onDelete={(document) => { setDocuments((current) => current.filter((item) => item.id !== document.id)); setNotice('Document deleted.') }} search={search} onSearchChange={setSearch} />
         </div></div></div>
       )}
 

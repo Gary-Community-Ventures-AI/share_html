@@ -70,7 +70,10 @@ Core agent endpoints:
 ```text
 GET    /api/v1/documents
 POST   /api/v1/documents
+GET    /api/v1/documents/{id}
+PUT    /api/v1/documents/{id}
 PUT    /api/v1/documents/{id}/content
+GET    /api/v1/documents/{id}/access
 PUT    /api/v1/documents/{id}/access
 DELETE /api/v1/documents/{id}
 ```

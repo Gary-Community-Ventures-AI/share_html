@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { ApiError, request } from './api'
 import type { GetToken } from './api'
 import Autocomplete from './components/Autocomplete'
+import DocumentActions from './DocumentActions'
 
 type ViewerDocument = {
   id: string
@@ -418,6 +419,7 @@ export default function DocumentViewer({ documentId, getToken, signedOut = false
           <button className="viewer-button" onClick={refreshRender} disabled={loading || !contentReady} aria-label="Reload document" title="Reload"><ViewerIcon name="reload" /><span>Reload</span></button>
           <button className="viewer-button" onClick={enterFullscreen} aria-label="Enter fullscreen" title="Fullscreen"><ViewerIcon name="fullscreen" /><span>Fullscreen</span></button>
           <button className="viewer-button download-action" onClick={downloadDocument} disabled={!contentReady} aria-label="Download document" title="Download"><ViewerIcon name="download" /><span>Download</span></button>
+          {mode === 'private' && document?.can_manage && <DocumentActions placement="viewer" document={document} getToken={getToken} onRenamed={(title) => setDocument((current) => current ? { ...current, title } : current)} onDeleted={() => window.location.assign('/')} />}
         </div>
       </header>
       <div className="viewer-stage">

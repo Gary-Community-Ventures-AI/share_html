@@ -393,6 +393,20 @@ def get_document(document_id: str):
     return jsonify(document=document_json(document, g.current_user))
 
 
+@api.put("/documents/<document_id>")
+@authenticated()
+def rename_document(document_id: str):
+    document = db.session.get(Document, document_id)
+    if document is None:
+        abort(404, description="Document not found")
+    if not can_manage_document(g.current_user, document):
+        abort(403, description="Document management access required")
+    document.title = required_text(json_body(), "title", maximum=200)
+    document.updated_at = now()
+    db.session.commit()
+    return jsonify(document=document_json(document, g.current_user))
+
+
 @api.put("/documents/<document_id>/content")
 @authenticated()
 def replace_document(document_id: str):
@@ -531,7 +545,7 @@ def replace_document_access(document_id: str):
 
 
 @api.get("/documents/<document_id>/access")
-@authenticated(browser_only=True)
+@authenticated()
 def get_document_access(document_id: str):
     document = db.session.get(Document, document_id)
     if document is None:

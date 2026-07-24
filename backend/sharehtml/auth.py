@@ -12,6 +12,7 @@ import jwt
 from flask import abort, current_app, g, request
 from jwt import PyJWKClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from .extensions import db
 from .host import require_surface
@@ -109,7 +110,13 @@ def authenticate_clerk(token: str) -> User | None:
         ) or None
         user = User(external_id=external_id, email=email.lower(), name=name)
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            user = db.session.scalar(select(User).where(User.external_id == external_id))
+            if user is None:
+                raise
     return user
 
 
