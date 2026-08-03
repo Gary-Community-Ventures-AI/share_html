@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .extensions import db
@@ -82,6 +82,7 @@ class DocumentAccess(db.Model):
     principal_type: Mapped[str] = mapped_column(db.String(16))
     principal_id: Mapped[str] = mapped_column(db.String(320), index=True)
     role: Mapped[str] = mapped_column(db.String(16), default="sharer", server_default="sharer")
+    can_edit: Mapped[bool] = mapped_column(default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now)
 
 

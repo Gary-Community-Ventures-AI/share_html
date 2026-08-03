@@ -9,16 +9,17 @@ type ViewerDocument = {
   title: string
   url: string
   relationship?: 'mine' | 'shared'
+  can_edit?: boolean
   can_manage?: boolean
   can_share?: boolean
 }
 
 type Group = { id: string; name: string; recipient_count: number; recipients?: string[] }
 type Contact = { id: string; name: string; email: string }
-type AccessRole = 'viewer' | 'sharer'
+type AccessRole = 'viewer' | 'sharer' | 'editor'
 type Access = { group_ids: string[]; user_emails: string[]; roles: Record<string, AccessRole> }
 type LinkAccess = { enabled: boolean; password_protected: boolean; password?: string | null }
-type AccessResponse = { access: Access; groups: Group[]; contacts: Contact[]; link: LinkAccess; can_manage: boolean }
+type AccessResponse = { access: Access; groups: Group[]; contacts: Contact[]; link: LinkAccess; can_edit: boolean; can_manage: boolean }
 type ViewerMode = 'private' | 'public' | 'password' | 'sign-in' | 'unavailable'
 
 function isValidEmail(value: string) {
@@ -54,6 +55,7 @@ export function ShareDialog({ documentId, getToken, onClose }: { documentId: str
   const [recipientQuery, setRecipientQuery] = useState('')
   const [groups, setGroups] = useState<Group[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [canEdit, setCanEdit] = useState(false)
   const [canManage, setCanManage] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -73,6 +75,7 @@ export function ShareDialog({ documentId, getToken, onClose }: { documentId: str
         setPassword(loadedPassword)
         setGroups(result.groups)
         setContacts(result.contacts)
+        setCanEdit(result.can_edit)
         setCanManage(result.can_manage)
         savedAccessSnapshot.current = JSON.stringify({ access: result.access, enabled: result.link.enabled, password: loadedPassword })
       })
@@ -197,7 +200,7 @@ export function ShareDialog({ documentId, getToken, onClose }: { documentId: str
           <div><span>DOCUMENT ACCESS</span><h2 id="share-title">Share document</h2></div>
           <button className="viewer-icon-button" onClick={closeDialog} aria-label="Close share panel"><ViewerIcon name="close" /></button>
         </header>
-        <p className="share-note">{canManage ? 'Choose whether each recipient can view or share.' : 'Add people with view or share access. Only the owner can change existing access.'}</p>
+        <p className="share-note">{canManage ? 'Choose whether each recipient can view, share, or edit.' : canEdit ? 'Add people with view, share, or edit access. Only the owner can change existing access.' : 'Add people with view or share access. Only the owner can change existing access.'}</p>
         {loading ? <div className="access-loading"><ViewerIcon name="reload" /> Loading access…</div> : (
           <div className="access-options">
             <section className="access-section">
@@ -207,8 +210,8 @@ export function ShareDialog({ documentId, getToken, onClose }: { documentId: str
                 <button className="viewer-button" type="submit">Add</button>
               </form>
               <div className="choice-list recipient-choice-list">
-                {groups.filter((group) => access.group_ids.includes(group.id)).map((group) => <div className="access-choice recipient-card" key={group.id}><div className="recipient-card-header"><span><strong>{group.name}</strong><small>Private email list</small></span><select value={access.roles[`group:${group.id}`] || 'sharer'} onChange={(event) => setRole(`group:${group.id}`, event.target.value as AccessRole)} aria-label={`Role for ${group.name}`}><option value="viewer">Can view</option><option value="sharer">Can share</option></select><button type="button" onClick={() => removeGroup(group.id)} aria-label={`Remove ${group.name}`}><ViewerIcon name="close" /></button></div><div className="group-member-list">{group.recipients?.map((email) => <span key={email}>{email}</span>)}{!group.recipients?.length && <span>No people in this group.</span>}</div></div>)}
-                {access.user_emails.map((email) => <div className="access-choice recipient-card" key={email}><div className="recipient-card-header"><span><strong>{contacts.find((contact) => contact.email === email)?.name || email}</strong><small>{contacts.find((contact) => contact.email === email) ? email : 'Direct email'}</small></span><select value={access.roles[`email:${email}`] || 'sharer'} onChange={(event) => setRole(`email:${email}`, event.target.value as AccessRole)} aria-label={`Role for ${email}`}><option value="viewer">Can view</option><option value="sharer">Can share</option></select><button type="button" onClick={() => removeEmail(email)} aria-label={`Remove ${email}`}><ViewerIcon name="close" /></button></div></div>)}
+                {groups.filter((group) => access.group_ids.includes(group.id)).map((group) => <div className="access-choice recipient-card" key={group.id}><div className="recipient-card-header"><span><strong>{group.name}</strong><small>Private email list</small></span><select value={access.roles[`group:${group.id}`] || 'sharer'} onChange={(event) => setRole(`group:${group.id}`, event.target.value as AccessRole)} aria-label={`Role for ${group.name}`}><option value="viewer">Can view</option><option value="sharer">Can share</option>{(canManage || canEdit) && <option value="editor">Can edit</option>}</select><button type="button" onClick={() => removeGroup(group.id)} aria-label={`Remove ${group.name}`}><ViewerIcon name="close" /></button></div><div className="group-member-list">{group.recipients?.map((email) => <span key={email}>{email}</span>)}{!group.recipients?.length && <span>No people in this group.</span>}</div></div>)}
+                {access.user_emails.map((email) => <div className="access-choice recipient-card" key={email}><div className="recipient-card-header"><span><strong>{contacts.find((contact) => contact.email === email)?.name || email}</strong><small>{contacts.find((contact) => contact.email === email) ? email : 'Direct email'}</small></span><select value={access.roles[`email:${email}`] || 'sharer'} onChange={(event) => setRole(`email:${email}`, event.target.value as AccessRole)} aria-label={`Role for ${email}`}><option value="viewer">Can view</option><option value="sharer">Can share</option>{(canManage || canEdit) && <option value="editor">Can edit</option>}</select><button type="button" onClick={() => removeEmail(email)} aria-label={`Remove ${email}`}><ViewerIcon name="close" /></button></div></div>)}
                 {access.group_ids.length === 0 && access.user_emails.length === 0 && <p className="access-empty">No groups or people selected.</p>}
               </div>
             </section>
@@ -419,11 +422,11 @@ export default function DocumentViewer({ documentId, getToken, signedOut = false
           <button className="viewer-button" onClick={refreshRender} disabled={loading || !contentReady} aria-label="Reload document" title="Reload"><ViewerIcon name="reload" /><span>Reload</span></button>
           <button className="viewer-button" onClick={enterFullscreen} aria-label="Enter fullscreen" title="Fullscreen"><ViewerIcon name="fullscreen" /><span>Fullscreen</span></button>
           <button className="viewer-button download-action" onClick={downloadDocument} disabled={!contentReady} aria-label="Download document" title="Download"><ViewerIcon name="download" /><span>Download</span></button>
-          {mode === 'private' && document?.can_manage && <DocumentActions placement="viewer" document={document} getToken={getToken} onRenamed={(title) => setDocument((current) => current ? { ...current, title } : current)} onDeleted={() => window.location.assign('/')} />}
+          {mode === 'private' && document?.can_edit && <DocumentActions placement="viewer" document={document} getToken={getToken} canDelete={Boolean(document.can_manage)} onRenamed={(title) => setDocument((current) => current ? { ...current, title } : current)} onDeleted={() => window.location.assign('/')} />}
         </div>
       </header>
       <div className="viewer-stage">
-        {renderUrl && <iframe title={document?.title || 'Document viewer'} src={renderUrl} sandbox="allow-scripts allow-same-origin" />}
+        {renderUrl && <iframe title={document?.title || 'Document viewer'} src={renderUrl} sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" allow="clipboard-write" />}
         {loading && <div className="viewer-state"><ViewerIcon name="reload" /><strong>Preparing secure render…</strong><span>Requesting a fresh ticket.</span></div>}
         {!loading && mode === 'password' && (
           <div className="viewer-state password-gate">

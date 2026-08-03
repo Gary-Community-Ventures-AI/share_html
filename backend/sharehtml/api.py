@@ -27,6 +27,7 @@ from .models import (
     now,
 )
 from .permissions import (
+    can_edit_document,
     can_manage_document,
     can_share_document,
     can_view_document,
@@ -78,6 +79,7 @@ def document_json(document: Document, viewer: User | None = None) -> dict:
     }
     if viewer is not None:
         payload["relationship"] = "mine" if document.created_by_id == viewer.id else "shared"
+        payload["can_edit"] = can_edit_document(viewer, document)
         payload["can_manage"] = can_manage_document(viewer, document)
         payload["can_share"] = can_share_document(viewer, document)
     return payload
@@ -399,8 +401,8 @@ def rename_document(document_id: str):
     document = db.session.get(Document, document_id)
     if document is None:
         abort(404, description="Document not found")
-    if not can_manage_document(g.current_user, document):
-        abort(403, description="Document management access required")
+    if not can_edit_document(g.current_user, document):
+        abort(403, description="Document editing access required")
     document.title = required_text(json_body(), "title", maximum=200)
     document.updated_at = now()
     db.session.commit()
@@ -413,8 +415,8 @@ def replace_document(document_id: str):
     document = db.session.get(Document, document_id)
     if document is None:
         abort(404, description="Document not found")
-    if not can_manage_document(g.current_user, document):
-        abort(403, description="Document management access required")
+    if not can_edit_document(g.current_user, document):
+        abort(403, description="Document editing access required")
     body = json_body()
     content = required_text(body, "content")
     title = required_text(body, "title", maximum=200) if "title" in body else None
@@ -448,10 +450,14 @@ def replace_document_access(document_id: str):
     if any(
         not isinstance(key, str)
         or not isinstance(role, str)
-        or role not in {"viewer", "sharer"}
+        or role not in {"viewer", "sharer", "editor"}
         for key, role in roles.items()
     ):
-        abort(400, description="Access roles must be viewer or sharer")
+        abort(400, description="Access roles must be viewer, sharer, or editor")
+
+    can_edit = can_edit_document(g.current_user, document)
+    if not is_owner and not can_edit and any(role == "editor" for role in roles.values()):
+        abort(403, description="Editing access is required to grant the editor role")
 
     available_groups = set(
         db.session.scalars(
@@ -468,22 +474,26 @@ def replace_document_access(document_id: str):
     if is_owner:
         db.session.query(DocumentAccess).filter_by(document_id=document.id).delete()
         for group_id in available_groups:
+            role = roles.get(f"group:{group_id}", "sharer")
             db.session.add(
                 DocumentAccess(
                     document_id=document.id,
                     principal_type="group",
                     principal_id=group_id,
-                    role=roles.get(f"group:{group_id}", "sharer"),
+                    role="sharer" if role == "editor" else role,
+                    can_edit=role == "editor",
                 )
             )
         for email in normalized_emails:
             if email != g.current_user.email:
+                role = roles.get(f"email:{email}", "sharer")
                 db.session.add(
                     DocumentAccess(
                         document_id=document.id,
                         principal_type="email",
                         principal_id=email,
-                        role=roles.get(f"email:{email}", "sharer"),
+                        role="sharer" if role == "editor" else role,
+                        can_edit=role == "editor",
                     )
                 )
     else:
@@ -497,22 +507,26 @@ def replace_document_access(document_id: str):
         }
         for group_id in available_groups:
             if ("group", group_id) not in existing:
+                role = roles.get(f"group:{group_id}", "sharer")
                 db.session.add(
                     DocumentAccess(
                         document_id=document.id,
                         principal_type="group",
                         principal_id=group_id,
-                        role=roles.get(f"group:{group_id}", "sharer"),
+                        role="sharer" if role == "editor" else role,
+                        can_edit=role == "editor",
                     )
                 )
         for email in normalized_emails:
             if email != g.current_user.email and ("email", email) not in existing:
+                role = roles.get(f"email:{email}", "sharer")
                 db.session.add(
                     DocumentAccess(
                         document_id=document.id,
                         principal_type="email",
                         principal_id=email,
-                        role=roles.get(f"email:{email}", "sharer"),
+                        role="sharer" if role == "editor" else role,
+                        can_edit=role == "editor",
                     )
                 )
 
@@ -562,7 +576,10 @@ def get_document_access(document_id: str):
     )
     group_ids = [rule.principal_id for rule in rules if rule.principal_type == "group"]
     user_emails = [rule.principal_id for rule in rules if rule.principal_type == "email"]
-    roles = {f"{rule.principal_type}:{rule.principal_id}": rule.role for rule in rules}
+    roles = {
+        f"{rule.principal_type}:{rule.principal_id}": "editor" if rule.can_edit else rule.role
+        for rule in rules
+    }
     groups = db.session.scalars(
         select(Group).where(Group.created_by_id == g.current_user.id).order_by(Group.name)
     ).all()
@@ -583,6 +600,7 @@ def get_document_access(document_id: str):
             "roles": roles,
         },
         can_manage=is_owner,
+        can_edit=can_edit_document(g.current_user, document),
         link=link_access_json(
             db.session.get(DocumentLinkAccess, document.id), include_password=is_owner
         ),

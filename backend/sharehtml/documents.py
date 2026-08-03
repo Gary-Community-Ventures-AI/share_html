@@ -46,7 +46,7 @@ def content_security_policy() -> str:
             "form-action 'none'",
             "base-uri 'none'",
             f"frame-ancestors {frame_ancestor}",
-            "sandbox allow-scripts allow-same-origin",
+            "sandbox allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox",
         ]
     )
 
@@ -57,7 +57,9 @@ def secure_document_response(response: Response) -> Response:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-DNS-Prefetch-Control"] = "off"
     response.headers["Cache-Control"] = "private, no-store"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-write=(self)"
+    )
     return response
 
 

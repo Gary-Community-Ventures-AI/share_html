@@ -14,7 +14,7 @@ function ActionIcon({ name }: { name: 'more' | 'rename' | 'trash' }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
-export default function DocumentActions({ document, getToken, onRenamed, onDeleted, placement = 'card' }: { document: ManagedDocument; getToken?: GetToken; onRenamed: (title: string) => void; onDeleted: () => void; placement?: 'card' | 'viewer' }) {
+export default function DocumentActions({ document, getToken, canDelete, onRenamed, onDeleted, placement = 'card' }: { document: ManagedDocument; getToken?: GetToken; canDelete: boolean; onRenamed: (title: string) => void; onDeleted: () => void; placement?: 'card' | 'viewer' }) {
   const detailsRef = useRef<HTMLDetailsElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [action, setAction] = useState<Action>(null)
@@ -75,7 +75,7 @@ export default function DocumentActions({ document, getToken, onRenamed, onDelet
         <summary aria-label={`More actions for ${document.title}`} title="More actions"><ActionIcon name="more" /></summary>
         <div className="document-actions-menu">
           <button type="button" onClick={() => openAction('rename')}><ActionIcon name="rename" /> Rename</button>
-          <button className="destructive" type="button" onClick={() => openAction('delete')}><ActionIcon name="trash" /> Delete</button>
+          {canDelete && <button className="destructive" type="button" onClick={() => openAction('delete')}><ActionIcon name="trash" /> Delete</button>}
         </div>
       </details>
       {action && (

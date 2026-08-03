@@ -82,5 +82,29 @@ def can_share_document(user: User, document: Document) -> bool:
     return access is not None
 
 
+def can_edit_document(user: User, document: Document) -> bool:
+    if document.created_by_id == user.id:
+        return True
+
+    group_ids = select(GroupRecipient.group_id).where(GroupRecipient.email == user.email)
+    access = db.session.scalar(
+        select(DocumentAccess.id).where(
+            DocumentAccess.document_id == document.id,
+            DocumentAccess.can_edit.is_(True),
+            or_(
+                and_(
+                    DocumentAccess.principal_type == "email",
+                    DocumentAccess.principal_id == user.email,
+                ),
+                and_(
+                    DocumentAccess.principal_type == "group",
+                    DocumentAccess.principal_id.in_(group_ids),
+                ),
+            ),
+        )
+    )
+    return access is not None
+
+
 def can_manage_document(user: User, document: Document) -> bool:
     return document.created_by_id == user.id
