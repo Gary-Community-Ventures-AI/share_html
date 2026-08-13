@@ -9,7 +9,7 @@ import { ShareDialog } from './DocumentViewer'
 type EntityId = string | number
 type View = 'documents' | 'groups' | 'agent-access'
 type User = { email?: string; name?: string }
-type Document = { id: EntityId; title: string; relationship: 'mine' | 'shared'; can_edit?: boolean; can_manage?: boolean; can_share?: boolean; created_at?: string; updated_at?: string }
+type Document = { id: EntityId; title: string; relationship: 'mine' | 'shared'; can_edit?: boolean; can_manage?: boolean; can_share?: boolean; thumbnail_status?: 'pending' | 'ready' | 'failed'; thumbnail_stale?: boolean; thumbnail_url?: string | null; created_at?: string; updated_at?: string }
 type ApiKey = { id: EntityId; name?: string; prefix?: string; created_at?: string }
 type OpenedDocuments = Record<string, string>
 
@@ -63,9 +63,13 @@ function DocumentCollection({ documents, loading, profileImageUrl, userName, ope
           return (
           <div className="document-card" key={document.id}>
           <a className="document-row" href={`/documents/${document.id}`} target="_blank" rel="noopener noreferrer" onClick={() => onOpen(document)}>
+            <div className={`document-thumbnail ${document.thumbnail_stale ? 'stale' : ''}`}>
+              {document.thumbnail_url ? <img src={document.thumbnail_url} alt="" loading="lazy" /> : <div className="thumbnail-placeholder"><span>S/</span><small>{document.thumbnail_status === 'failed' ? 'Preview unavailable' : 'Generating preview'}</small></div>}
+              {document.thumbnail_status === 'pending' && <span className="thumbnail-status">Updating</span>}
+            </div>
             <div className="document-name">
               <span className="document-avatar">{profileImageUrl ? <img src={profileImageUrl} alt="" /> : userName.slice(0, 1).toUpperCase()}</span>
-              <div><strong>{document.title}</strong><small>{document.relationship === 'mine' ? 'Owned by me' : 'Shared with me'}</small></div>
+              <div><strong>{document.title}</strong><small>{document.can_manage ? 'Owner' : document.can_edit ? 'Editor' : document.can_share ? 'Sharer' : 'Viewer'}</small></div>
             </div>
             <time><span>{openedAt ? 'OPENED' : document.updated_at ? 'UPDATED' : 'CREATED'}</span>{formatDate(openedAt || document.updated_at || document.created_at)}</time>
             <span className="open-button">Open <Icon name="arrow" /></span>

@@ -98,6 +98,8 @@ DELETE /api/v1/groups/{id}/emails/{recipient_id}
 
 Documents must be one self-contained HTML file. Inline all scripts, styles, images, SVG, fonts, and data. Separate asset bundles are not supported.
 
+Document thumbnails are generated asynchronously after publishing and after each content update. An always-on `thumbnail-worker` Railway service uses Playwright Chromium, PostgreSQL for durable jobs, and the existing private Bucket for versioned JPEG captures. The last successful thumbnail remains visible while an update is pending.
+
 Document recipients have a `viewer`, `sharer`, or `editor` role. New grants default to `sharer`. Viewers can open the document. Sharers can add viewers and sharers. Editors can update content and titles and add recipients with any role; their API keys inherit the same authority. Only the owner can change existing roles, remove existing access, configure public links, or delete the document. Set roles with keys such as `email:person@example.com` or `group:{group_id}` in the access payload's `roles` object.
 
 ## Railway

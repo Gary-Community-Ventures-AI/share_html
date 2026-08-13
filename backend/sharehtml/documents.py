@@ -15,6 +15,7 @@ from .host import require_surface
 from .models import Document, DocumentLinkAccess, User
 from .permissions import can_view_document
 from .storage import storage
+from .thumbnails import thumbnail_render_serializer
 
 
 documents = Blueprint("documents", __name__)
@@ -129,6 +130,31 @@ def render_document():
     return secure_document_response(Response(content, content_type="text/html; charset=utf-8"))
 
 
+@documents.get("/_thumbnail_render")
+def render_document_thumbnail():
+    require_surface("document")
+    token = request.args.get("token", "")
+    try:
+        payload = thumbnail_render_serializer().loads(
+            token,
+            max_age=current_app.config["THUMBNAIL_RENDER_SECONDS"],
+        )
+    except SignatureExpired:
+        abort(401, description="Thumbnail render ticket expired")
+    except BadSignature:
+        abort(401, description="Invalid thumbnail render ticket")
+    if payload.get("document_id") != g.document_id:
+        abort(401, description="Thumbnail ticket does not match this document")
+    document = db.session.get(Document, g.document_id)
+    if document is None or payload.get("version") != document.content_version:
+        abort(409, description="Document content changed")
+    try:
+        content = storage.get(document.object_key)
+    except FileNotFoundError:
+        abort(404, description="Document content not found")
+    return secure_document_response(Response(content, content_type="text/html; charset=utf-8"))
+
+
 @documents.get("/")
 def index():
     if g.request_surface == "document":
@@ -147,6 +173,12 @@ def index():
 def application_asset(path: str):
     require_surface("app")
     return send_from_directory(frontend_dist() / "assets", path)
+
+
+@documents.get("/favicon.svg")
+def application_favicon():
+    require_surface("app")
+    return send_from_directory(frontend_dist(), "favicon.svg")
 
 
 @documents.get("/<path:path>")

@@ -18,6 +18,9 @@ dependencies = [
   "python-dotenv>=1.1,<2",
 ]
 
+[project.optional-dependencies]
+thumbnail-worker = ["playwright==1.55.0"]
+
 [tool.setuptools]
 package-dir = {"" = "backend"}
 

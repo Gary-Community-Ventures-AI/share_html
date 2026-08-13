@@ -1,0 +1,10 @@
+FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/backend
+WORKDIR /app
+COPY pyproject.toml ./
+COPY backend/ ./backend/
+COPY migrations/ ./migrations/
+RUN pip install --no-cache-dir '.[thumbnail-worker]'
+CMD ["python", "-m", "sharehtml.thumbnail_worker"]

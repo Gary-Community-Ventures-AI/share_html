@@ -5,7 +5,7 @@ import hmac
 import time
 from datetime import datetime
 
-from flask import Blueprint, abort, current_app, g, jsonify, request
+from flask import Blueprint, Response, abort, current_app, g, jsonify, request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -35,6 +35,7 @@ from .permissions import (
     viewable_documents,
 )
 from .storage import storage
+from .thumbnails import enqueue_thumbnail, thumbnail_serializer, thumbnail_url
 
 
 api = Blueprint("api", __name__)
@@ -76,6 +77,12 @@ def document_json(document: Document, viewer: User | None = None) -> dict:
         "url": f"{current_app.config['APP_PUBLIC_URL']}/documents/{document.id}",
         "created_at": iso(document.created_at),
         "updated_at": iso(document.updated_at),
+        "thumbnail_status": document.thumbnail_status,
+        "thumbnail_stale": (
+            document.thumbnail_version is not None
+            and document.thumbnail_version < document.content_version
+        ),
+        "thumbnail_url": thumbnail_url(document),
     }
     if viewer is not None:
         payload["relationship"] = "mine" if document.created_by_id == viewer.id else "shared"
@@ -371,10 +378,12 @@ def create_document():
         created_by_id=g.current_user.id,
         title=title,
         object_key=f"documents/{document_id}/index.html",
+        content_version=1,
     )
     db.session.add(document)
     try:
         storage.put(document.object_key, content)
+        enqueue_thumbnail(document)
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -412,7 +421,9 @@ def rename_document(document_id: str):
 @api.put("/documents/<document_id>/content")
 @authenticated()
 def replace_document(document_id: str):
-    document = db.session.get(Document, document_id)
+    document = db.session.scalar(
+        select(Document).where(Document.id == document_id).with_for_update()
+    )
     if document is None:
         abort(404, description="Document not found")
     if not can_edit_document(g.current_user, document):
@@ -420,11 +431,30 @@ def replace_document(document_id: str):
     body = json_body()
     content = required_text(body, "content")
     title = required_text(body, "title", maximum=200) if "title" in body else None
-    storage.put(document.object_key, content)
-    if "title" in body:
-        document.title = title
-    document.updated_at = now()
-    db.session.commit()
+    previous_object_key = document.object_key
+    next_version = document.content_version + 1
+    next_object_key = f"documents/{document.id}/versions/{next_version}/index.html"
+    try:
+        storage.put(next_object_key, content)
+        document.object_key = next_object_key
+        document.content_version = next_version
+        enqueue_thumbnail(document)
+        if "title" in body:
+            document.title = title
+        document.updated_at = now()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        try:
+            storage.delete(next_object_key)
+        except Exception:
+            current_app.logger.exception("Failed to clean up document content after update error")
+        raise
+    if previous_object_key != next_object_key:
+        try:
+            storage.delete(previous_object_key)
+        except Exception:
+            current_app.logger.exception("Failed to clean up superseded document content")
     return jsonify(document=document_json(document, g.current_user))
 
 
@@ -618,13 +648,47 @@ def delete_document(document_id: str):
     if not can_manage_document(g.current_user, document):
         abort(403, description="Document management access required")
     object_key = document.object_key
+    thumbnail_object_key = document.thumbnail_object_key
     db.session.delete(document)
     db.session.commit()
     try:
         storage.delete(object_key)
+        if thumbnail_object_key:
+            storage.delete(thumbnail_object_key)
     except Exception:
         current_app.logger.exception("Failed to clean up deleted document content")
     return "", 204
+
+
+@api.get("/document-thumbnails/<document_id>/<int:version>")
+def get_document_thumbnail(document_id: str, version: int):
+    require_surface("app")
+    token = request.args.get("token", "")
+    try:
+        payload = thumbnail_serializer().loads(
+            token,
+            max_age=current_app.config["THUMBNAIL_URL_SECONDS"],
+        )
+    except (BadSignature, SignatureExpired):
+        abort(401, description="Thumbnail URL expired or invalid")
+    if payload != {"document_id": document_id, "version": version}:
+        abort(401, description="Thumbnail URL does not match")
+    document = db.session.get(Document, document_id)
+    if (
+        document is None
+        or document.thumbnail_version != version
+        or not document.thumbnail_object_key
+    ):
+        abort(404, description="Thumbnail not found")
+    try:
+        content = storage.get_bytes(document.thumbnail_object_key)
+    except FileNotFoundError:
+        abort(404, description="Thumbnail not found")
+    return Response(
+        content,
+        content_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @api.post("/documents/<document_id>/render")

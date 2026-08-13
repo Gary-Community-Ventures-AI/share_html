@@ -14,23 +14,29 @@ class DocumentStorage:
         Path(current_app.config["LOCAL_STORAGE_PATH"]).resolve().mkdir(parents=True, exist_ok=True)
 
     def put(self, key: str, content: str) -> None:
+        self.put_bytes(key, content.encode("utf-8"), "text/html; charset=utf-8")
+
+    def put_bytes(self, key: str, content: bytes, content_type: str) -> None:
         if current_app.config["STORAGE_BACKEND"] == "s3":
             self._s3().put_object(
                 Bucket=current_app.config["S3_BUCKET"],
                 Key=key,
-                Body=content.encode("utf-8"),
-                ContentType="text/html; charset=utf-8",
+                Body=content,
+                ContentType=content_type,
             )
             return
         path = self._local_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_bytes(content)
 
     def get(self, key: str) -> str:
+        return self.get_bytes(key).decode("utf-8")
+
+    def get_bytes(self, key: str) -> bytes:
         if current_app.config["STORAGE_BACKEND"] == "s3":
             response = self._s3().get_object(Bucket=current_app.config["S3_BUCKET"], Key=key)
-            return response["Body"].read().decode("utf-8")
-        return self._local_path(key).read_text(encoding="utf-8")
+            return response["Body"].read()
+        return self._local_path(key).read_bytes()
 
     def delete(self, key: str) -> None:
         if current_app.config["STORAGE_BACKEND"] == "s3":

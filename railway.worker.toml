@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.thumbnail-worker"
+
+[deploy]
+healthcheckPath = "/ready"
+healthcheckTimeout = 30
+restartPolicyType = "ALWAYS"

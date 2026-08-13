@@ -65,6 +65,27 @@ class Document(db.Model):
     created_by_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(db.String(200))
     object_key: Mapped[str] = mapped_column(db.String(500), unique=True)
+    content_version: Mapped[int] = mapped_column(default=1, server_default="1")
+    thumbnail_version: Mapped[int | None] = mapped_column()
+    thumbnail_object_key: Mapped[str | None] = mapped_column(db.String(500))
+    thumbnail_status: Mapped[str] = mapped_column(db.String(16), default="pending", server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now, onupdate=now)
+
+
+class ThumbnailJob(db.Model):
+    __tablename__ = "thumbnail_jobs"
+
+    document_id: Mapped[str] = mapped_column(
+        db.ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    content_version: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[str] = mapped_column(db.String(16), default="pending", server_default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now, index=True)
+    lease_owner: Mapped[str | None] = mapped_column(db.String(64))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), index=True)
+    error: Mapped[str | None] = mapped_column(db.String(1000))
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=now, onupdate=now)
 
